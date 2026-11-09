@@ -1,5 +1,5 @@
 {
-  "name": "Dao-Eterno-servidor",
+  "name": "dao-eterno-servidor",
   "version": "1.0.0",
   "description": "Servidor on-line do Dao Eterno 2D (salas, chat, itens no chão). Sem dependências.",
   "main": "server.js",
