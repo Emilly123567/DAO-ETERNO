@@ -42,7 +42,7 @@ const servidor = http.createServer((req, res) => {
     if (!jogoHtml && fs.existsSync(arq)) jogoHtml = Buffer.from(fs.readFileSync(arq, 'utf8').replace('</head>', '<script>window.DAO_SERVIDOR = location.origin;</script></head>'));
     if (jogoHtml) { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' }); return res.end(jogoHtml); }
   }
-  res.writeHead(url === '/' || url === '/status' ? 200 : 404, Object.assign({ 'Content-Type': 'text/plain; charset=utf-8' }, cors));
+  res.writeHead(200, Object.assign({ 'Content-Type': 'text/plain; charset=utf-8' }, cors));
   res.end('Dao Eterno · servidor on-line ok · ' + salas.size + ' sala(s), ' + [...salas.values()].reduce((a, s) => a + s.membros.size, 0) + ' jogador(es)');
 });
 
@@ -149,4 +149,5 @@ setInterval(() => {
   }
 }, 25000);
 
-servidor.listen(PORTA, () => console.log('Dao Eterno · servidor on-line na porta ' + PORTA));
+process.on('uncaughtException', (e) => console.error('erro (o servidor continua):', e));
+servidor.listen(PORTA, '0.0.0.0', () => console.log('Dao Eterno · servidor on-line na porta ' + PORTA));
