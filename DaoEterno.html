@@ -1867,6 +1867,7 @@ const Mundo = (() => {
       for (const [dx, dy] of [[-7, -5], [2, -5], [-7, 2], [2, 2]]) predio(cx + dx, cy + dy, 5, 4, 'casa', { teto: '#6a4a32', modelo: 'aldeia' });
       npc('aldeao', 'Ancião da Vila', cx, cy + 1, { reg: gid });
       npc('mercado', 'Vendedor Ambulante', cx + 4, cy, { reg: gid });
+      if (!nv) npc('errante', 'Cultivador Errante', cx - 3, cy + 3, { reg: gid, fantasma: 1 });
       o[idx(cx - 4, cy + 1)] = O.POCO; for (let y = cy - 2; y <= cy; y++) for (let x = cx + 4; x <= cx + 6; x++) { g[idx(x, y)] = estradaG; M.road[idx(x, y)] = 2; o[idx(x, y)] = 0; }
       poi('vila', cx, cy, { nome });
       poi('teleporte', cx + 5, cy - 1, { nome: 'Matriz de Teleporte · ' + nome });
@@ -2509,6 +2510,7 @@ const Render = (() => {
     escrituras: { r1: '#3a4a6a', chapeu: 'erudito', ferr: 'livro' }, formacoes: { r1: '#4a3a6a', chapeu: 'oficial', ferr: 'leque' }, estalagem: { r1: '#8a6a4a', chapeu: 'pano', ferr: 'tigela' },
     bestas: { r1: '#6a5a3a', chapeu: 'pele', ferr: 'cajado' }, cambio: { r1: '#6a2a2a', chapeu: 'nobre', ferr: 'abaco' }, leilao: { r1: '#2a3c66', chapeu: 'coroa', ferr: 'leque', sCor: '#e04a4a' },
     aldeao: { r1: '#7a6a5a', velho: 1, barba: 1, ferr: 'cajado' }, recompensas: null,
+    errante: { r1: '#b8c4e0', r2: '#e8eeff', velho: 1, barba: 1, ferr: 'cajado', chapeu: 'pano' },
   };
   function lookNPC(n) {
     if (n.look) return n.look;
@@ -2564,7 +2566,7 @@ const Render = (() => {
     if (Jogo.pet) lista.push([Jogo.pet.y, 'pet', Jogo.pet, (Jogo.pet.x - ox) * z, (Jogo.pet.y - oy) * z]);
     lista.sort((a, b) => a[0] - b[0]);
     for (const [, tipo, e, sx, sy] of lista) {
-      if (tipo === 'npc') { if (e.papel === 'recompensas') quadroAvisos(sx, sy, z); else pessoa(lookNPC(e), { fy: 1 }, sx, sy, z, now); }
+      if (tipo === 'npc') { if (e.papel === 'recompensas') quadroAvisos(sx, sy, z); else if (e.fantasma) { const fl = Math.sin(now / 600 + e.id) * 3 * z; cx.globalAlpha = 0.25; cx.fillStyle = '#9ab0ff'; cx.beginPath(); cx.ellipse(sx, sy - 14 * z + fl, 16 * z, 22 * z, 0, 0, 6.283); cx.fill(); cx.globalAlpha = 0.62; pessoa(lookNPC(e), { fy: 1 }, sx, sy + fl, z, now); cx.globalAlpha = 1; } else pessoa(lookNPC(e), { fy: 1 }, sx, sy, z, now); }
       else if (tipo === 'pet') { const sp = Sprites.fera(e.forma, e.cor, e.cor2), fr = e.anda ? (Math.floor(e.walkT / 8) % 4) : 0, k = z * 0.8; cx.save(); cx.translate(sx, sy); if (e.fx < 0) cx.scale(-1, 1); cx.drawImage(sp, fr * 40, 0, 40, 36, -20 * k, -33 * k, 40 * k, 36 * k); cx.restore(); }
       else {
         if (eu.sent) aura(sx, sy, z, now);
@@ -2661,22 +2663,22 @@ const Curva = (() => {
   const B = (lo + hi) / 2, A = 30 / (Math.exp(10 * B) - 1);
   const X = (r) => (r >= 49 ? X49 : A * (Math.exp(B * r) - 1));
   // segundos de meditação por domínio (um domínio = 9 estágios + a base, ~16 estágios) para o cultivador de referência:
-  // Reino Mortal ~7,5 h, Imortal ~9,4 h, Divino ~11 h, Dão Eterno ~15 h (no ritmo ×1; ajudas e reclusão encurtam)
-  const TDOM = [1860, 2330, 2800, 1810];
+  // Reino Mortal ~5 h, Imortal ~6,6 h, Divino ~8 h, Dão Eterno ~11 h no ritmo ×1 (melhor local do domínio, sem matriz);
+  // uma matriz de cultivo, um veio ou um preparo melhor encurtam bastante
+  const TDOM = [1300, 1650, 2000, 1300];
   const Tdom = (r) => { const R = reinoDeRank(r); return TDOM[R] * Math.pow(R === 3 ? 1.04 : 1.08, r - REINOS[R].ranks[0]); };
-  const REF = new Float64Array(50);
+  const REF = new Float64Array(50), REFLOC = new Float64Array(50);
   for (let r = 0; r < 50; r++) {
     const g = regiaoDoRank(r), L = g ? g.L : 0;
     let loc = 1; for (const l of LOCAIS) if (l.req <= r) loc = Math.max(loc, l.f);
-    let lend = 1; for (const t of TECNICAS_LEND) if (t.req <= r) lend *= t.f;
-    REF[r] = 3 * loc * (1 + 0.35 * Math.pow(L + 1, 0.85)) * (1 + (2 + 2 * Math.round(L * 8 / 27)) * 0.5) * lend * Math.pow(1.12, r);
+    REF[r] = 3 * (1 + 0.35 * Math.pow(L + 1, 0.85)) * Math.pow(1.07, r); REFLOC[r] = loc;
   }
   const E = new Float64Array(501); for (let s = 0; s <= 500; s++) E[s] = s >= 499 ? N.MAX : 2 + s * LOG30 + X(Math.floor(s / 10));
   return {
     E: (s) => E[clamp(s, 0, 500)], Tdom,
     // segundos de meditação por estágio para o cultivador de referência
     Tst: (s) => Tdom(Math.floor(clamp(s, 0, 499) / 10)) / 16,
-    ref: (r) => REF[clamp(r, 0, 49)],
+    ref: (r) => REF[clamp(r, 0, 49)], refLoc: (r) => REFLOC[clamp(r, 0, 49)],
     C: (s) => 1 + 0.06 * s + 3 * reinoDeRank(rankDe(s)), // escala de combate
   };
 })();
@@ -2709,33 +2711,43 @@ const Stats = {
   rank: () => rankDe(P.passo), estagio: () => estagioDe(P.passo), reino: () => reinoDeRank(rankDe(P.passo)),
   qiMax: () => Curva.E(P.passo),
   nivelL() { const g = regiaoDoRank(rankDe(P.passo)); return g ? g.L : 0; },
-  // fator de eficiência do cultivo, com a lista do que entra nele
+  // fator de eficiência do cultivo, com a lista do que entra nele.
+  // Dois grupos: LUGAR (o que você acha explorando: local de cultivo, matriz, veio, chuva) conta forte;
+  // PREPARO (método, técnicas, equipamentos, pílulas, Dao...) rende com retorno decrescente.
   F(detalhe) {
-    const L = [];
-    const m = (nome, v) => { if (v !== 1) L.push([nome, v]); return v; };
-    let f = 1;
+    const L = []; let lug = 1, prep = 1;
+    const m = (nome, v, g) => { if (v !== 1) L.push([nome, v, g]); if (g === 'l') lug *= v; else prep *= v; return v; };
     const loc = Jogo.localAqui();
-    if (loc) { const fl = loc.f * (1 + 0.1 * (P.locUp[loc.id] || 0)); f *= m('Local: ' + loc.nome, fl); if (loc.el && loc.el === P.el) f *= m('Afinidade de elemento', 1.5); }
-    if (P.metodo !== null && MANUAIS[P.metodo]) { const mm = MANUAIS[P.metodo], ms = (P.man[P.metodo] || {}).m || 0; f *= m('Método: ' + mm.nome, mm.f * MAESTRIA_MULT[ms] * (mm.el === P.el ? 1.25 : 1) * Stats.efic(mm.L)); }
-    let lend = 1; for (const i of P.lend) lend *= TECNICAS_LEND[i].f; f *= m('Técnicas lendárias', lend);
-    let mq = 1, ma = 1; for (const i of P.merid) { const M = MERIDIANOS[i]; if (M.bonus === 'qi') mq += M.val; if (M.bonus === 'all') ma += M.val; } f *= m('Meridianos', mq * ma);
-    const fm = Formacao.ativa('cultivo'); if (fm) f *= m('Matriz: ' + fm.m.nome, fm.mult * Stats.efic(fm.m.L));
-    f *= m('Equipamentos', Stats.eqMult('qi') * Stats.eqMult('all'));
-    f *= m('Pílulas', Stats.buff('qi') * Stats.buff('all'));
-    f *= m('Aspectos do Dao', (1 + 0.2 * (P.aspectos[0] || 0)) * (1 + 0.1 * (P.aspectos[5] || 0)));
-    f *= m('Nível do Dao', 1 + (P.daoNv - 1) * 0.1);
-    if (P.pet && ['qi', 'all'].includes(PETS[P.pet.id].bonus)) f *= m('Besta companheira', 1.2 + 0.05 * P.pet.nv);
-    f *= m('Itens de ascensão', 1 + Stats.asc('qi') + Stats.asc('all'));
-    f *= m('Matriz Espiritual', 1 + 0.05 * P.matrizNv);
-    f *= m('Rios do Dao', 1 + 0.05 * Stats.somaRios());
-    f *= m('Tribulações de Morte vencidas', 1 + P.qiBonus);
-    f *= m('Elixires permanentes', P.permQi);
-    if (Eventos.e === 'chuva') f *= m('Chuva Espiritual', 2);
-    if (P.titulo === 'discipulo') f *= m('Título: Discípulo Dedicado', 1.05);
-    if (P.titulo === 'eremita' && typeof Reclusao !== 'undefined' && Reclusao.ativa) f *= m('Título: Eremita da Montanha', 1.1);
+    if (loc) { m('Local: ' + loc.nome, loc.f * (1 + 0.1 * (P.locUp[loc.id] || 0)), 'l'); if (loc.el && loc.el === P.el) m('Afinidade de elemento', 1.5, 'l'); }
+    const fm = Formacao.ativa('cultivo'); if (fm) m('Matriz: ' + fm.m.nome, fm.mult * Stats.efic(fm.m.L), 'l');
+    const vv = Stats.veioPerto(); if (vv) m('Veio de pedra espiritual por perto', vv, 'l');
+    if (Eventos.e === 'chuva') m('Chuva Espiritual', 2, 'l');
+    if (P.metodo !== null && MANUAIS[P.metodo]) { const mm = MANUAIS[P.metodo], ms = (P.man[P.metodo] || {}).m || 0; m('Método: ' + mm.nome, mm.f * MAESTRIA_MULT[ms] * (mm.el === P.el ? 1.25 : 1) * Stats.efic(mm.L)); }
+    let lend = 1; for (const i of P.lend) lend *= TECNICAS_LEND[i].f; m('Técnicas lendárias', lend);
+    let mq = 1, ma = 1; for (const i of P.merid) { const M = MERIDIANOS[i]; if (M.bonus === 'qi') mq += M.val; if (M.bonus === 'all') ma += M.val; } m('Meridianos', mq * ma);
+    m('Equipamentos', Stats.eqMult('qi') * Stats.eqMult('all'));
+    m('Pílulas', Stats.buff('qi') * Stats.buff('all'));
+    m('Aspectos do Dao', (1 + 0.2 * (P.aspectos[0] || 0)) * (1 + 0.1 * (P.aspectos[5] || 0)));
+    m('Nível do Dao', 1 + (P.daoNv - 1) * 0.1);
+    if (P.pet && ['qi', 'all'].includes(PETS[P.pet.id].bonus)) m('Besta companheira', 1.2 + 0.05 * P.pet.nv);
+    m('Itens de ascensão', 1 + Stats.asc('qi') + Stats.asc('all'));
+    m('Matriz Espiritual', 1 + 0.05 * P.matrizNv);
+    m('Rios do Dao', 1 + 0.05 * Stats.somaRios());
+    m('Tribulações de Morte vencidas', 1 + P.qiBonus);
+    m('Elixires permanentes', P.permQi);
+    if (P.titulo === 'discipulo') m('Título: Discípulo Dedicado', 1.05);
+    if (P.titulo === 'eremita' && typeof Reclusao !== 'undefined' && Reclusao.ativa) m('Título: Eremita da Montanha', 1.1);
+    const f = lug * prep;
     if (!detalhe) return f;
-    const pen = Stats.pen(); for (const [n, v] of Stats.pen(true)) L.push([n, v]);
-    return { f, L, pen };
+    for (const [n, v] of Stats.pen(true)) L.push([n, v, 'p']);
+    return { f, L, lug, prep, pen: Stats.pen() };
+  },
+  // meditar ao lado de um veio de pedra espiritual: ×1,5 a ×2 (mais quanto mais o veio cresceu)
+  veioPerto() {
+    if (Mundo.inst || !Mundo.nodesPerto) return 0;
+    const tx = Jogo.eu.x / TILE, ty = Jogo.eu.y / TILE; let b = 0;
+    for (const n of Mundo.nodesPerto(tx, ty, 4)) if (n.tipo === 'veio' && Math.hypot(n.x + 0.5 - tx, n.y + 0.5 - ty) < 4) b = Math.max(b, 1.5 + 0.25 * (Veio.grau(n) - n.L));
+    return b;
   },
   // penalidades contam inteiras (não entram no retorno decrescente)
   pen(lista) {
@@ -2745,9 +2757,16 @@ const Stats = {
     if (Stats.idade() > Stats.vidaMax()) L.push(['Declínio da velhice', 0.1]);
     return lista ? L : L.reduce((a, [, v]) => a * v, 1);
   },
-  // ritmo relativo ao cultivador de referência: (raiz × ajudas ÷ referência)^0,3, entre 0,3 e 6
-  ritmoBruto() { return Stats.raiz() * Stats.F() / Curva.ref(rankDe(P.passo)); },
-  ritmo() { return clamp(Math.pow(Stats.ritmoBruto(), 0.3), 0.3, 6) * Stats.pen(); },
+  // ritmo (v5): LUGAR conta forte, (lugar ÷ melhor local do seu domínio)^0,7; PREPARO com retorno decrescente,
+  // (raiz × preparo ÷ referência)^0,4. Ritmo 1 = meditar no melhor local de cultivo do seu domínio, com preparo de referência.
+  ritmoPartes() {
+    const r = rankDe(P.passo), d = Stats.F(true);
+    const lug = clamp(Math.pow(d.lug / Curva.refLoc(r), 0.7), 0.06, 25);
+    const prep = clamp(Math.pow(Stats.raiz() * d.prep / Curva.ref(r), 0.4), 0.4, 5);
+    return { lug, prep, pen: d.pen, total: clamp(lug * prep, 0.05, 40) * d.pen };
+  },
+  ritmoBruto() { return Stats.ritmoPartes().total / Math.max(1e-9, Stats.pen()); },
+  ritmo() { return Stats.ritmoPartes().total; },
   // Qi por segundo (log10)
   // velocidade da raiz: divide o tempo de cada estágio
   raiz() { return Math.pow(DESTINOS[P.destino].mult, 0.7) * P.aptidao; },
@@ -4413,6 +4432,7 @@ const Missoes = (() => {
       if (o.tipo === 'reino' && !Registros.caminho(o.n)) { const p = Mundo.pois.find((p) => p.tipo === 'segredo' && Segredo.visto(p) && !Segredo.feito(p)); if (p) out.push({ x: p.x, y: p.y, nome: h.t, h: 1 }); }
     }
     if (h && !P.miss.falou && h.npc && !Mundo.inst) { const n = Mundo.npcs.find((n) => n.nome === h.npc && n.reg === Mundo.reino * 7 + (P.seita.id % 7)) || Mundo.npcs.find((n) => n.nome === h.npc); if (n) out.push({ x: n.x / TILE, y: n.y / TILE, nome: 'Falar: ' + h.npc, h: 1 }); }
+    if (P.dica && P.dica.reino === Mundo.reino && !Mundo.inst) { const p = Mundo.pois.find((q) => q.tipo === P.dica.tipo && q.ref === P.dica.ref); const feito = !p || (p.tipo === 'segredo' ? Segredo.feito(p) : P.mundo[Mundo.reino].ruina[p.ref]); if (feito) P.dica = null; else out.push({ x: p.x, y: p.y, nome: '👻 ' + p.nome, h: 1 }); }
     for (const m of P.miss.ativas) {
       if (reinoL(m.reg) !== Mundo.reino || Mundo.inst) continue;
       if (m.pts) for (const [x, y] of m.pts) out.push({ x, y, nome: m.nome });
@@ -4751,7 +4771,7 @@ const UI = (() => {
     if (!sabe) return h + '</div>';
     const conv = Jogo.convertendo();
     h += barra(P.qiSup / QI_ASC, 'linear-gradient(90deg,#9a7ae0,#e8ddff)', Fmt.int(P.qiSup) + ' / ' + Fmt.int(QI_ASC) + ' ' + QI_NOME[A]);
-    h += `<p class="sub">Para ascender você precisa de ${Fmt.int(QI_ASC)} de ${QI_NOME[A]} reunidos aqui embaixo. Duas formas: <b>converter</b> o seu ${QI_NOME[R]} meditando (lento: ~${Fmt.t(QI_ASC / Math.max(1e-9, QI_ASC / (4 * 3600) * clamp(Math.pow(Stats.ritmoBruto(), 0.3), 0.3, 6)))} de meditação no seu ritmo; a reclusão ajuda) ou a <b>${MAT_QI(A).nome}</b>, que só cai em masmorras (1,7%) e queima ${PEDRAS[PEDRA_TOPO(A)].nome} muito rápido (cada pedra dá ${MAT_QI(A).rende}). Não precisa ir a lugar nenhum: o céu vem até você.</p>`;
+    h += `<p class="sub">Para ascender você precisa de ${Fmt.int(QI_ASC)} de ${QI_NOME[A]} reunidos aqui embaixo. Duas formas: <b>converter</b> o seu ${QI_NOME[R]} meditando (lento: ~${Fmt.t(4 * 3600 / Math.max(0.05, Stats.ritmoBruto()))} de meditação no seu ritmo; a reclusão ajuda) ou a <b>${MAT_QI(A).nome}</b>, que só cai em masmorras (1,7%) e queima ${PEDRAS[PEDRA_TOPO(A)].nome} muito rápido (cada pedra dá ${MAT_QI(A).rende}). Não precisa ir a lugar nenhum: o céu vem até você.</p>`;
     if (!pico) h += '<p class="neg">Chegue ao Pico deste domínio para começar.</p>';
     else h += `<div class="row">${btn(P.converter ? '⏸ Parar de converter' : '🔄 Converter ao meditar', () => { P.converter = !P.converter; if (P.converter && !Jogo.eu.sent) Jogo.meditar(true); return P.converter ? 'Enquanto medita, seu Qi vira ' + QI_NOME[A] + '.' : ''; }, P.converter ? 'on' : 'pri')}${btn('Converter o Qi da barra', () => Jogo.converterBarra())}</div>${conv ? '<p class="pos">Convertendo: +' + Stats.taxaConv().toFixed(2) + ' por segundo.</p>' : P.converter ? '<p class="sub">Medite para converter.</p>' : ''}`;
     h += `<div class="kv"><span>${PEDRAS[PEDRA_TOPO(A)].nome}</span><b>${Fmt.n(P.pedras[PEDRA_TOPO(A)] || 0)}</b></div>`;
@@ -4774,7 +4794,15 @@ const UI = (() => {
     h += cartaoAscensao();
     h += `<div class="card"><div class="tit">Raiz espiritual · <span style="color:${RZ[2]}">${RZ[0]}</span></div><p class="sub">A raiz não multiplica o Qi: ela encurta o tempo. Uma raiz ${RZ[0].toLowerCase()} mede o cultivo em Qi por ${RZ[1]}. A raiz entra no ritmo junto com as outras ajudas, com retorno decrescente.</p>
       <div class="kv"><span>Destino do Dao</span><b style="color:${D.cor}">${D.nome} (×${D.mult})</b></div><div class="kv"><span>Velocidade da raiz</span><b>×${Fmt.n(Stats.raiz())}</b></div><div class="kv"><span>Elemento</span><b style="color:${ELEM[P.el].cor}">${ELEM[P.el].nome} · aptidão ${P.aptidao}</b></div></div>`;
-    h += `<div class="card"><div class="tit">Ajudas no cultivo ×${Fmt.x(F.f).slice(1)} → ritmo ×${Stats.ritmo().toFixed(2)}</div><p class="sub">As ajudas se comparam com o que um cultivador dedicado tem neste domínio (×${Fmt.n(Curva.ref(r))}) e rendem com retorno decrescente: 10× mais ajuda ≈ 2× mais rápido. Meditar, ferimentos e velhice contam inteiros.</p>${F.L.map(([n, v]) => `<div class="kv"><span>${escH(n)}</span><b class="${v < 1 ? 'neg' : 'pos'}">${Fmt.x(v)}</b></div>`).join('') || '<p class="sub">Nenhuma ainda. Locais de cultivo, métodos, matrizes e pílulas aceleram.</p>'}</div>`;
+    { const rp = Stats.ritmoPartes(), lista = (g) => F.L.filter((x) => (x[2] || '') === g).map(([n, v]) => `<div class="kv"><span>${escH(n)}</span><b class="${v < 1 ? 'neg' : 'pos'}">${Fmt.x(v)}</b></div>`).join('');
+      let bl = null; for (const l of LOCAIS) if (l.req <= r && (!bl || l.f >= bl.f)) bl = l;
+      h += `<div class="card"><div class="tit">Ritmo de cultivo ×${rp.total.toFixed(2)}</div>
+      <div class="kv"><span>🏞️ Lugar (conta forte)</span><b class="${rp.lug >= 1 ? 'pos' : 'neg'}">×${rp.lug.toFixed(2)}</b></div>
+      <p class="sub">O que você acha explorando: locais de cultivo, sua matriz, veios de pedra espiritual, chuva espiritual. Ritmo de lugar ×1 = meditar no melhor local do seu domínio${bl ? ' (' + escH(bl.nome) + ', em ' + escH(REGIOES[bl.regiao].nome) + ')' : ''}. Uma matriz de cultivo ou um veio por perto passam disso.</p>
+      ${lista('l') || '<p class="sub">Nada aqui: medite num local de cultivo, ao lado de um veio ou dentro da sua matriz.</p>'}
+      <div class="kv"><span>📜 Preparo (retorno decrescente)</span><b class="${rp.prep >= 1 ? 'pos' : 'neg'}">×${rp.prep.toFixed(2)}</b></div>
+      <p class="sub">Raiz, método, técnicas, equipamentos, pílulas, Dao, meridianos: 10× mais preparo ≈ 2,5× mais rápido.</p>
+      ${lista('')}${lista('p') ? '<div class="kv"><span>⚠️ Penalidades (contam inteiras)</span><b class="neg">×' + rp.pen.toFixed(2) + '</b></div>' + lista('p') : ''}</div>`; }
     h += `<div class="card"><div class="tit">Vida</div><div class="kv"><span>Idade</span><b>${Math.floor(Stats.idade())} / ${Fmt.anos(Stats.vidaMax())}</b></div><div class="kv"><span>Calendário</span><b>${Tempo.data().split(' · ')[0]} · 10 min reais = 1 ano</b></div><div class="kv"><span>Poder de Combate</span><b>${Fmt.L(Stats.cp())}</b></div></div>`;
     h += `<div class="card"><div class="tit">Absorver pedras espirituais</div><p class="sub">Uma pedra do seu grau (${tagL(Stats.nivelL(), 1)}) dá 2% do estágio. Cada grau acima vale 100×; abaixo, quase nada.</p>${P.pedras.map((n, k) => n >= 1 ? `<div class="kv"><span style="color:${PEDRAS[k].cor}">◆ ${PEDRAS[k].nome} × ${Fmt.n(n)} <small class="sub">(${Fmt.L(Math.min(Jogo.valorPedra(k), q))} cada)</small></span><span>${btn('1', () => Jogo.absorver(k, 1), 'mini')}${btn('10', () => Jogo.absorver(k, 10), 'mini')}${btn('Até encher', () => Jogo.absorver(k, n), 'mini')}</span></div>` : '').join('') || '<p class="sub">Sem pedras. Elas são raras: veios de pedra espiritual, chefes, missões e venda de núcleos de besta.</p>'}</div>`;
     return h;
@@ -4897,7 +4925,7 @@ const UI = (() => {
   function mapa() {
     mapC = null;
     if (Mundo.inst) { toast('O mapa não funciona dentro de uma masmorra.'); return; }
-    abrir('🗺️ ' + REINOS[Mundo.reino].nome + ' · ' + REINOS[Mundo.reino].mundo, [['m', '', () => `<div class="row mapabar">${[1, 2, 4, 8].map((z) => btn(z === 1 ? 'Reino inteiro' : 'Zoom ×' + z, () => { mapaZoom = z; setTimeout(desenhaMapa, 0); }, mapaZoom === z ? 'mini on' : 'mini')).join('')}${btn('📍 Onde estou', () => { mapC = null; setTimeout(desenhaMapa, 0); }, 'mini')}</div><p class="sub" style="text-align:center">Arraste o mapa para olhar em volta.</p><div class="mapawrap"><canvas id="mapcv"></canvas></div><div class="leg">● você · ⚔ masmorra · 💀 covil · 🏛 ruína · 🔯 local de cultivo · 🌀 teleporte · 🗿 estela · ⛩ barreira · ✦ missão · ✨ ascensão</div>`]], 'm', false, 'mapa');
+    abrir('🗺️ ' + REINOS[Mundo.reino].nome + ' · ' + REINOS[Mundo.reino].mundo, [['m', '', () => `<div class="row mapabar">${[1, 2, 4, 8].map((z) => btn(z === 1 ? 'Reino inteiro' : 'Zoom ×' + z, () => { mapaZoom = z; setTimeout(desenhaMapa, 0); }, mapaZoom === z ? 'mini on' : 'mini')).join('')}${btn('📍 Onde estou', () => { mapC = null; setTimeout(desenhaMapa, 0); }, 'mini')}</div><p class="sub" style="text-align:center">Arraste o mapa para olhar em volta. Você está em (${Math.floor(Jogo.eu.x / TILE)}, ${Math.floor(Jogo.eu.y / TILE)}).</p><div class="mapawrap"><canvas id="mapcv"></canvas></div><div class="leg">● você · ⚔ masmorra · 💀 covil · 🏛 ruína · 🔯 local de cultivo · 🌀 teleporte · 🗿 estela · ⛩ barreira · ✦ missão · ✨ ascensão</div>`]], 'm', false, 'mapa');
     setTimeout(desenhaMapa, 0);
   }
   function desenhaMapa() {
@@ -5030,6 +5058,24 @@ const UI = (() => {
       if (n.tipo === 'erva') Missoes.evento('colheita', Mundo.regAt((n.x + 0.5) * TILE, (n.y + 0.5) * TILE));
     }, 600);
   }
+  // a alma de um cultivador que vagou por todo o reino: dá as coordenadas do que ainda está escondido
+  function errante(n) {
+    const tx = Jogo.eu.x / TILE, ty = Jogo.eu.y / TILE, perto = (L) => L.sort((a, b) => Math.hypot(a.x - tx, a.y - ty) - Math.hypot(b.x - tx, b.y - ty))[0];
+    const est = P.mundo[Mundo.reino], R = Mundo.reino + 1;
+    const segs = REGISTROS[R] && !Registros.caminho(R) ? Mundo.pois.filter((p) => p.tipo === 'segredo' && !Segredo.feito(p)) : [];
+    let alvo = perto(segs), fala, sub;
+    if (alvo) {
+      est.segV = est.segV || {}; est.segV[alvo.ref] = 1;
+      fala = 'Eu também procurei o que existe acima deste céu. Morri antes de abrir todos os selos, mas lembro onde eles estão. O mais perto de você: ' + alvo.nome + ', em ' + REGIOES[alvo.reg].nome + '. Vá até as coordenadas (' + alvo.x + ', ' + alvo.y + '). Guardiões antigos protegem o selo: chegue forte.';
+      sub = 'Ruínas Secretas que faltam neste reino: ' + segs.length + ' · registros ' + Registros.n(R) + '/' + REGISTROS[R].length + '. Marcado no mapa e na bússola.';
+    } else {
+      alvo = perto(Mundo.pois.filter((p) => p.tipo === 'ruina' && !est.ruina[p.ref]));
+      if (alvo) { fala = 'Os selos deste reino já não guardam segredos para você. Mas ainda há ruínas antigas que ninguém saqueou. A mais perto: ' + alvo.nome + ', em ' + REGIOES[alvo.reg].nome + ', nas coordenadas (' + alvo.x + ', ' + alvo.y + '). Cada uma ensina algo (Compreensão do Dao).'; sub = 'Marcado no mapa e na bússola.'; }
+      else { fala = 'Você já viu tudo o que eu vi. Siga em frente, cultivador.'; sub = ''; }
+    }
+    if (alvo) P.dica = { reino: Mundo.reino, tipo: alvo.tipo, ref: alvo.ref };
+    return dialogo('👻 ' + n.nome, '"' + fala + '"', sub);
+  }
   function npc(n) {
     if (Missoes.falar(n)) return;
     const L = REGIOES[n.reg].L, S = n.seita !== undefined ? SEITAS[n.seita] : null, membro = S && P.seita.id === n.seita;
@@ -5037,6 +5083,7 @@ const UI = (() => {
     const venderAba = () => Inv.lista((x) => x.tipo !== 'missao').map((it) => `<div class="item"><div><b style="color:${it.cor}">${escH(it.nome)}</b> ×${Fmt.n(it.n)} ${grauTag(it.L, it.tipo === 'erva' || it.tipo === 'pilula')}</div><span>${btn('Vender 1', () => Inv.vender(it.id, 1), 'mini')}${btn('Todos', () => Inv.vender(it.id, it.n), 'mini')}</span></div>`).join('') || '<p class="sub">Nada para vender.</p>';
     const fala = (t) => `<p class="falatxt">${escH(t)}</p>`;
     switch (n.papel) {
+      case 'errante': return errante(n);
       case 'mercado': return abrir('🛒 ' + n.nome, [['c', 'Comprar', lojaAba], ['v', 'Vender', venderAba]]);
       case 'alquimia': return abrir('⚗️ ' + n.nome, [['c', 'Comprar', lojaAba], ['a', 'Alquimia', () => alquimiaAba(L)], ['v', 'Vender', venderAba]]);
       case 'ferreiro': return abrir('🔨 ' + n.nome, [['c', 'Comprar', lojaAba], ['r', 'Refinar', refinoAba]]);
@@ -5114,7 +5161,7 @@ const UI = (() => {
     const picoH = estagioDe(P.passo) >= 9; $('#hBaseW').classList.toggle('hid', !picoH); if (picoH) { $('#hBase').style.width = (P.base >= 5 ? 1 : (P.base + P.baseP) / 5) * 100 + '%'; const rq = Stats.reqComp(rankDe(P.passo)); $('#hBaseT').textContent = 'Base ' + P.base + '/5 · ' + Math.round(Stats.chanceRomper() * 100) + '% · 🧠 ' + Math.floor(P.comp || 0) + '/' + rq + (Jogo.podeConverter() ? ' · ' + QI_NOME[P.reino + 1].replace('Qi ', '') + ' ' + Math.floor(P.qiSup / 100) + '%' : ''); }
     $('#bCond').classList.toggle('hid', !picoH || P.base >= 5);
     tickRecl(); miniMapa();
-    const g = Jogo.regiao(); $('#hInfo').textContent = Math.floor(Stats.idade()) + ' anos · ' + (Mundo.inst ? (Masmorra.ativa ? Masmorra.ativa.m.nome + ' · ' + Math.ceil(Masmorra.ativa.tempo) + 's' : '') : g ? g.nome : REINOS[Mundo.reino].mundo) + ' · ' + Tempo.data().split(' · ')[1];
+    const g = Jogo.regiao(); $('#hInfo').textContent = Math.floor(Stats.idade()) + ' anos · ' + (Mundo.inst ? (Masmorra.ativa ? Masmorra.ativa.m.nome + ' · ' + Math.ceil(Masmorra.ativa.tempo) + 's' : '') : g ? g.nome + ' (' + Math.floor(Jogo.eu.x / TILE) + ', ' + Math.floor(Jogo.eu.y / TILE) + ')' : REINOS[Mundo.reino].mundo) + ' · ' + Tempo.data().split(' · ')[1];
     const pico = estagioDe(P.passo) >= 9;
     const ab = $('#hAvanco'), prontoRomper = pico && (P.base >= 5 || cheio); ab.classList.toggle('hid', pico ? !prontoRomper : !cheio); ab.textContent = pico ? (P.base >= 5 ? '🌩️ Romper' : '⚡ Condensar') : '✦ Avançar'; ab.classList.toggle('trib', pico);
     // moedas
